@@ -1,5 +1,5 @@
 ### Site Settings ###
-title               : portfolYOU
+title               : Priyo's Portfolio
 description         : >-
                       I turn coffee :coffee: into code,
                       use tabs over spaces
@@ -25,7 +25,7 @@ nav_exclude:                                            # The following paths ar
 ### Author Info ###
 author:
   name              : Priyo Tripanca Wisesa
-  image             : https://i.imgur.com/uyDNQnn.jpg
+  image             : https://pbs.twimg.com/profile_images/1634601923239366656/L4BJtGh2_400x400.jpg
   # behance           : your_username
 # dribbble          : your_username
   email             : priyo.tw@gmail.com
