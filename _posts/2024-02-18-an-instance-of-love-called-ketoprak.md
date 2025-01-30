@@ -5,11 +5,13 @@ style: fill
 color: light
 description: "This post is just my appreciation post for ketoprak"
 ---
+
 This post has three versions: the one I wrote alone with bad grammar, the one paraphrased by ChatGPT, and the combined version of the two to create a better story, at least for me.
 
 If, for whatever reason, you want to read this blog post, just go for the combined version, so you won't waste too much of your time. I prefer it the most, and I also added something in there.
 
 ## My version
+
 When we talk about love, so often we talk about our relationship with another people. Whether it is family, friends, or someone special in your life.
 
 But... we all know that people will leaves you at some point and you will be alone with your thoughts. What would you do if that happened? For me, definitely, I will buy ketoprak. Sometimes, I will ask the seller to gives me two eggs. Just because, why not?
@@ -27,6 +29,7 @@ Suddenly all the loves, romantically, and platonically are disappear. Well, mayb
 Maybe this blog post feel so jumpy. It looks like I don't know what to tell. Well, that happened because I really don't know what to tell. First, I want to talk about how ketoprak is something that I love so much and how I don't really care about loving a person anymore because people will dissapoint you and leave. Then, I just want to tell about my first, last, and only break up and how it affects my views towards love. Finally, I realise that it is actually my fault that she left. So, I just want to say that I am sorry for everything. Have a great life.
 
 ## ChatGPT version
+
 When we discuss love, it's often centered around our relationships with other people, be it family, friends, or someone special in our lives.
 
 However, we're aware that people will eventually leave, and we find ourselves alone with our thoughts. What would you do if that happened? For me, without a doubt, I would buy ketoprak. Occasionally, I'd ask the seller to give me two eggs, just because, why not?
@@ -44,6 +47,7 @@ Suddenly, all forms of love—romantic and platonic—vanished. Perhaps it would
 This blog post may seem scattered, like I don't know what to say. That's because I genuinely didn't. Initially, I wanted to express my love for ketoprak and my indifference toward loving a person because people will disappoint and leave. Then, I wanted to recount my first, last, and only breakup and its impact on my perspective of love. Finally, I realized it was my fault she left. So, I just want to say I'm sorry for everything. Have a great life.
 
 ## Combined version
+
 When we talk about love, it's often centered around our relationships with other people, be it family, friends, or someone special in our lives.
 
 However... we're aware that people will eventually leave, and we find ourselves alone with our thoughts. What would you do if that happened? For me, without a doubt, I would buy ketoprak. Occasionally, I'd ask the seller to give me two eggs, just because, why not?

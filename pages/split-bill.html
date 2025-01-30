@@ -1,0 +1,231 @@
+---
+layout: default
+title: Bill Splitter
+permalink: /split-bill/
+---
+
+<style>
+    [data-theme="dark"] input {
+    color: white;
+    }
+    [data-theme="dark"] .table {
+    color: white;
+    }
+</style>
+
+<div class="container my-5">
+    <h2 class="text-center">Bill Splitter</h2>
+
+    <div class="card p-3">
+        <h3>People</h3>
+        <button class="btn btn-primary my-2" onclick="addPerson()">Add Person</button>
+        
+        <div class="table-responsive">
+            <table id="peopleTable" class="table table-sm">
+                <thead class="thead">
+                    <tr>
+                        <th>Name</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card p-3 mt-4">
+        <h3>Enter Expenses</h3>
+        <button class="btn btn-success my-2" onclick="addExpense()">Add Expense</button>
+        
+        <div class="table-responsive">
+            <table id="expenseTable" class="table table-sm">
+                <thead class="thead">
+                    <tr>
+                        <th>Payer</th>
+                        <th>Amount</th>
+                        <th>Description</th>
+                        <th>Distribution</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <button class="btn btn-warning mt-3" onclick="calculateSplit()">Calculate</button>
+    </div>
+
+    <div class="result mt-4" id="output"></div>
+</div>
+
+
+
+<script>
+    let people = [];
+
+    function addPerson(name = "Person " + (people.length + 1)) {
+        people.push(name);
+        updatePeopleTable();
+        updateExpenseTable();
+
+        // Automatically focus and highlight the name input
+        setTimeout(() => {
+            let lastRow = document.getElementById("peopleTable").rows[people.length];
+            let inputField = lastRow.cells[0].querySelector("input");
+            inputField.focus();
+            inputField.select();
+        }, 0);
+    }
+
+    function removePerson(index) {
+        people.splice(index, 1);
+        updatePeopleTable();
+        updateExpenseTable();
+    }
+
+    function updatePeopleTable() {
+        // let table = document.getElementById("peopleTable");
+        // table.innerHTML = `<tr>
+        //     <th>Name</th>
+        //     <th>Action</th>
+        // </tr>`;
+        let table = document.querySelector("#peopleTable tbody");
+        table.innerHTML = ``;
+
+        people.forEach((name, index) => {
+            let row = table.insertRow();
+            row.insertCell(0).innerHTML = `<input type="text" value="${name}" onchange="updatePersonName(${index}, this.value)">`;
+            row.insertCell(1).innerHTML = `<button onclick="removePerson(${index})">Remove</button>`;
+        });
+    }
+
+    function updatePersonName(index, newName) {
+        people[index] = newName;
+        updateExpenseTable();
+    }
+
+    function addExpense() {
+        let table = document.getElementById("expenseTable");
+        let row = table.insertRow();
+        
+        let payerCell = row.insertCell(0);
+        let amountCell = row.insertCell(1);
+        let descCell = row.insertCell(2);
+        let distCell = row.insertCell(3);
+        let actionCell = row.insertCell(4);
+        
+        payerCell.innerHTML = `<select>${people.map(p => `<option>${p}</option>`).join('')}</select>`;
+        amountCell.innerHTML = `
+            <div style="display: inline-flex; align-items: center; gap: 5px;">
+            <button onclick="changeAmount(this, -1)">-</button>
+            <input type="text" value="0" oninput="formatNumber(this)" onblur="ensureNumber(this)">
+            <button onclick="changeAmount(this, 1)">+</button>
+            </div>
+        `;
+        descCell.innerHTML = `<input type="text" placeholder="Description">`;
+
+        let distInputs = people.map((p, i) => `<div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
+            <span style="flex-grow: 1; text-align: left;">${p}:</span>
+            <div style="display: inline-flex; align-items: center; gap: 5px;">
+            <button onclick="changeAmount(this, -1, ${i})">-</button>
+            <input type="text" value="1" oninput="formatNumber(this)" onblur="ensureNumber(this)">
+            <button onclick="changeAmount(this, 1, ${i})">+</button>
+            </div>
+            </div>`).join('<br>');
+        distCell.innerHTML = distInputs;
+
+        actionCell.innerHTML = `<button onclick="removeRow(this)">Remove</button>`;
+
+        // Automatically focus and highlight the amount input
+        setTimeout(() => {
+            let inputField = row.cells[1].querySelector("input");
+            inputField.focus();
+            inputField.select();
+        }, 0);
+    }
+
+    function updateExpenseTable() {
+        // let table = document.getElementById("expenseTable");
+        // table.innerHTML = `<tr>
+        //     <th>Payer</th>
+        //     <th>Amount</th>
+        //     <th>Description</th>
+        //     <th>Distribution</th>
+        //     <th>Action</th>
+        // </tr>`;
+        let table = document.querySelector("#expenseTable tbody");
+        table.innerHTML = ``;
+    }
+
+    function removeRow(button) {
+        let row = button.parentNode.parentNode;
+        row.parentNode.removeChild(row);
+    }
+
+    function formatNumber(input) {
+        let value = input.value.replace(/,/g, "").replace(/[^\d]/g, ""); 
+        input.value = value ? Number(value).toLocaleString() : "0";
+    }
+
+    function ensureNumber(input) {
+        if (input.value === "") input.value = "0";
+    }
+
+    function changeAmount(button, direction, index=0) {
+        let inputs = button.parentNode.querySelectorAll("input");
+        let input = inputs[index]
+        let value = parseInt(input.value.replace(/,/g, ""), 10) || 0;
+        let step = Math.pow(10, Math.floor(Math.log10(value || 1)));
+        input.value = (value + step * direction).toLocaleString();
+    }
+
+    function calculateSplit() {
+        let balances = {};
+
+        document.querySelectorAll("#expenseTable tr").forEach((row, index) => {
+            if (index === 0) return;
+
+            let payer = row.cells[0].querySelector("select").value;
+            let amount = parseFloat(row.cells[1].querySelector("input").value.replace(/,/g, "")) || 0;
+            let distInputs = row.cells[3].querySelectorAll("input");
+
+            if (!balances[payer]) balances[payer] = 0;
+            balances[payer] += amount;
+
+            let rawValues = Array.from(distInputs).map(input => parseFloat(input.value.replace(/,/g, "")) || 0);
+            let sumValues = rawValues.reduce((sum, val) => sum + val, 0);
+            let finalShares = rawValues.map(val => (sumValues > 0 ? (val / sumValues) * amount : 0));
+
+            distInputs.forEach((input, i) => {
+                let person = people[i];
+                let share = finalShares[i];
+
+                if (!balances[person]) balances[person] = 0;
+                balances[person] -= share;
+            });
+        });
+
+        let creditors = [], debtors = [];
+        for (let person in balances) {
+            let balance = balances[person];
+            if (balance > 0) creditors.push([person, balance]);
+            else if (balance < 0) debtors.push([person, -balance]);
+        }
+
+        let results = [];
+        while (creditors.length > 0 && debtors.length > 0) {
+            let [cName, cAmount] = creditors.pop();
+            let [dName, dAmount] = debtors.pop();
+            let payAmount = Math.min(cAmount, dAmount);
+
+            results.push(`${dName} pays ${cName} Rp ${payAmount.toLocaleString()}`);
+            
+            if (cAmount > dAmount) creditors.push([cName, cAmount - dAmount]);
+            else if (dAmount > cAmount) debtors.push([dName, dAmount - cAmount]);
+        }
+
+        document.getElementById("output").innerHTML = `<h3>Transactions:</h3><ul>` + 
+            results.map(r => `<li>${r}</li>`).join("") + `</ul>`;
+    }
+</script>
+
