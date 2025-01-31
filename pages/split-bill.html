@@ -43,6 +43,7 @@ permalink: /split-bill/
                     <tr>
                         <th>Payer</th>
                         <th>Amount</th>
+                        <th>Discount</th>
                         <th>Description</th>
                         <th>Distribution</th>
                         <th>Action</th>
@@ -58,22 +59,25 @@ permalink: /split-bill/
     <div class="result mt-4" id="output"></div>
 </div>
 
-
-
 <script>
     let people = [];
-    
+    let expenses = [];
+
     function getNextId() {
-        // ... before people is spread operator in js since Math.max cant directly passed a list
         return people.length > 0 ? Math.max(...people.map(p => p.id)) + 1 : 1;
     }
 
-    function addPerson(person = {"id":getNextId(), "name": `Person ${getNextId()}`}) {
+    function addPerson(person = {"id": getNextId(), "name": `Person ${getNextId()}`}) {
         people.push(person);
+
+        // Add the new person to the distribution of all existing expenses
+        expenses.forEach(expense => {
+            expense.distribution.push({ personId: person.id, share: 1 });
+        });
+
         updatePeopleTable();
         updateExpenseTable();
 
-        // Automatically focus and highlight the name input
         setTimeout(() => {
             let lastRow = document.getElementById("peopleTable").rows[people.length];
             let inputField = lastRow.cells[0].querySelector("input");
@@ -82,20 +86,19 @@ permalink: /split-bill/
         }, 0);
     }
 
-
-
     function removePerson(index) {
-        people.splice(index, 1);
+        let removedPerson = people.splice(index, 1)[0];
+
+        // Remove the person from the distribution of all existing expenses
+        expenses.forEach(expense => {
+            expense.distribution = expense.distribution.filter(dist => dist.personId !== removedPerson.id);
+        });
+
         updatePeopleTable();
         updateExpenseTable();
     }
 
     function updatePeopleTable() {
-        // let table = document.getElementById("peopleTable");
-        // table.innerHTML = `<tr>
-        //     <th>Name</th>
-        //     <th>Action</th>
-        // </tr>`;
         let table = document.querySelector("#peopleTable tbody");
         table.innerHTML = ``;
 
@@ -112,61 +115,94 @@ permalink: /split-bill/
     }
 
     function addExpense() {
-        let table = document.getElementById("expenseTable");
-        let row = table.insertRow();
-        
-        let payerCell = row.insertCell(0);
-        let amountCell = row.insertCell(1);
-        let descCell = row.insertCell(2);
-        let distCell = row.insertCell(3);
-        let actionCell = row.insertCell(4);
-        
-        payerCell.innerHTML = `<select>${people.map(p => `<option value=${p.id}>${p.name}</option>`).join('')}</select>`;
-        amountCell.innerHTML = `
-            <div style="display: inline-flex; align-items: center; gap: 5px;">
-            <button onclick="changeAmount(this, -1)">-</button>
-            <input type="text" value="0" oninput="formatNumber(this)" onblur="ensureNumber(this)">
-            <button onclick="changeAmount(this, 1)">+</button>
-            </div>
-        `;
-        descCell.innerHTML = `<input type="text" placeholder="Description">`;
+        let expense = {
+            id: expenses.length + 1,
+            payer: people[0]?.id || null,
+            amount: 0,
+            discount: 0, // Default discount is 0
+            description: "",
+            distribution: people.map(p => ({ personId: p.id, share: 1 })) // Initialize distribution for all people
+        };
+        expenses.push(expense);
+        updateExpenseTable();
 
-        let distInputs = people.map((p, i) => `<div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
-            <span style="flex-grow: 1; text-align: left;">${p.name}:</span>
-            <div style="display: inline-flex; align-items: center; gap: 5px;">
-            <button onclick="changeAmount(this, -1, ${i})">-</button>
-            <input type="text" value="1" oninput="formatNumber(this)" onblur="ensureNumber(this)">
-            <button onclick="changeAmount(this, 1, ${i})">+</button>
-            </div>
-            </div>`).join('<br>');
-        distCell.innerHTML = distInputs;
-
-        actionCell.innerHTML = `<button onclick="removeRow(this)">Remove</button>`;
-
-        // Automatically focus and highlight the amount input
         setTimeout(() => {
-            let inputField = row.cells[1].querySelector("input");
+            let lastRow = document.querySelector("#expenseTable tbody").lastChild;
+            let inputField = lastRow.cells[1].querySelector("input");
             inputField.focus();
             inputField.select();
         }, 0);
     }
 
     function updateExpenseTable() {
-        // let table = document.getElementById("expenseTable");
-        // table.innerHTML = `<tr>
-        //     <th>Payer</th>
-        //     <th>Amount</th>
-        //     <th>Description</th>
-        //     <th>Distribution</th>
-        //     <th>Action</th>
-        // </tr>`;
         let table = document.querySelector("#expenseTable tbody");
         table.innerHTML = ``;
+
+        expenses.forEach((expense, index) => {
+            let row = table.insertRow();
+            
+            let payerCell = row.insertCell(0);
+            let amountCell = row.insertCell(1);
+            let discountCell = row.insertCell(2);
+            let descCell = row.insertCell(3);
+            let distCell = row.insertCell(4);
+            let actionCell = row.insertCell(5);
+            
+            payerCell.innerHTML = `<select onchange="updateExpensePayer(${index}, this.value)">${people.map(p => `<option value=${p.id} ${p.id === expense.payer ? 'selected' : ''}>${p.name}</option>`).join('')}</select>`;
+            amountCell.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                <button onclick="changeAmount(this, -1, ${index}, 'amount')">-</button>
+                <input type="text" value="${expense.amount.toLocaleString()}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseAmount(${index}, this.value)">
+                <button onclick="changeAmount(this, 1, ${index}, 'amount')">+</button>
+                </div>
+            `;
+            discountCell.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                <button onclick="changeAmount(this, -1, ${index}, 'discount')">-</button>
+                <input type="text" value="${expense.discount.toLocaleString()}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseDiscount(${index}, this.value)">
+                <button onclick="changeAmount(this, 1, ${index}, 'discount')">+</button>
+                </div>
+            `;
+            descCell.innerHTML = `<input type="text" value="${expense.description}" onchange="updateExpenseDescription(${index}, this.value)">`;
+
+            let distInputs = expense.distribution.map((dist, i) => `
+                <div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
+                    <span style="flex-grow: 1; text-align: left;">${people.find(p => p.id === dist.personId).name}:</span>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <button onclick="changeDistribution(this, -1, ${index}, ${i})">-</button>
+                        <input type="text" value="${dist.share}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseDistribution(${index}, ${i}, this.value)">
+                        <button onclick="changeDistribution(this, 1, ${index}, ${i})">+</button>
+                    </div>
+                </div>`).join('<br>');
+            distCell.innerHTML = distInputs;
+
+            actionCell.innerHTML = `<button onclick="removeExpense(${index})">Remove</button>`;
+        });
     }
 
-    function removeRow(button) {
-        let row = button.parentNode.parentNode;
-        row.parentNode.removeChild(row);
+    function removeExpense(index) {
+        expenses.splice(index, 1);
+        updateExpenseTable();
+    }
+
+    function updateExpensePayer(index, payerId) {
+        expenses[index].payer = parseInt(payerId);
+    }
+
+    function updateExpenseAmount(index, amount) {
+        expenses[index].amount = parseFloat(amount.replace(/,/g, "")) || 0;
+    }
+
+    function updateExpenseDiscount(index, discount) {
+        expenses[index].discount = parseFloat(discount.replace(/,/g, "")) || 0;
+    }
+
+    function updateExpenseDescription(index, description) {
+        expenses[index].description = description;
+    }
+
+    function updateExpenseDistribution(index, distIndex, share) {
+        expenses[index].distribution[distIndex].share = parseFloat(share.replace(/,/g, "")) || 0;
     }
 
     function formatNumber(input) {
@@ -178,53 +214,68 @@ permalink: /split-bill/
         if (input.value === "") input.value = "0";
     }
 
-    function changeAmount(button, direction, index=0) {
-        let inputs = button.parentNode.querySelectorAll("input");
-        let input = inputs[index]
+    function changeAmount(button, direction, index, type) {
+        let input = button.parentNode.querySelector("input");
         let value = parseInt(input.value.replace(/,/g, ""), 10) || 0;
         let step = Math.pow(10, Math.floor(Math.log10(value || 1)));
         input.value = (value + step * direction).toLocaleString();
+
+        if (type === 'amount') {
+            updateExpenseAmount(index, input.value);
+        } else if (type === 'discount') {
+            updateExpenseDiscount(index, input.value);
+        }
+    }
+
+    function changeDistribution(button, direction, expenseIndex, distIndex) {
+        let input = button.parentNode.querySelector("input");
+        let value = parseInt(input.value.replace(/,/g, ""), 10) || 0;
+        let step = Math.pow(10, Math.floor(Math.log10(value || 1)));
+        input.value = (value + step * direction).toLocaleString();
+        updateExpenseDistribution(expenseIndex, distIndex, input.value);
     }
 
     function calculateSplit() {
         let balances = {};
 
-        document.querySelectorAll("#expenseTable tr").forEach((row, index) => {
-            if (index === 0) return;
+        expenses.forEach(expense => {
+            let payer = expense.payer;
+            let amount = expense.amount;
+            let discount = expense.discount;
+            let distribution = expense.distribution;
 
-            let payer = row.cells[0].querySelector("select").value; 
-            let amount = parseFloat(row.cells[1].querySelector("input").value.replace(/,/g, "")) || 0;
-            let distInputs = row.cells[3].querySelectorAll("input");
+            // Apply discount to the total amount of this expense
+            let totalAfterDiscount = amount - discount;
 
             if (!balances[payer]) balances[payer] = 0;
-            balances[payer] += amount;
+            balances[payer] += totalAfterDiscount; // Payer pays the discounted amount
 
-            let rawValues = Array.from(distInputs).map(input => parseFloat(input.value.replace(/,/g, "")) || 0);
-            let sumValues = rawValues.reduce((sum, val) => sum + val, 0);
-            let finalShares = rawValues.map(val => (sumValues > 0 ? (val / sumValues) * amount : 0));
+            // Calculate the total shares for distribution
+            let totalShares = distribution.reduce((sum, dist) => sum + dist.share, 0);
 
-            distInputs.forEach((input, i) => {
-                let person = people[i].id; // ganti jadi people find
-                let share = finalShares[i];
+            // Distribute the remaining amount (after discount) based on shares
+            distribution.forEach(dist => {
+                let personId = dist.personId;
+                let share = (dist.share / totalShares) * totalAfterDiscount;
 
-                if (!balances[person]) balances[person] = 0;
-                balances[person] -= share;
+                if (!balances[personId]) balances[personId] = 0;
+                balances[personId] -= share; // Each person owes their share
             });
         });
 
         let creditors = [], debtors = [];
-        for (let person in balances) {
-            let balance = balances[person];
-            if (balance > 0) creditors.push([person, balance]);
-            else if (balance < 0) debtors.push([person, -balance]);
+        for (let personId in balances) {
+            let balance = balances[personId];
+            if (balance > 0) creditors.push([personId, balance]);
+            else if (balance < 0) debtors.push([personId, -balance]);
         }
         
         let results = [];
         while (creditors.length > 0 && debtors.length > 0) {
             let [cId, cAmount] = creditors.pop();
-            cName = people.find(p => p.id === parseInt(cId)).name
+            let cName = people.find(p => p.id === parseInt(cId)).name;
             let [dId, dAmount] = debtors.pop();
-            dName = people.find(p => p.id === parseInt(dId)).name
+            let dName = people.find(p => p.id === parseInt(dId)).name;
             let payAmount = Math.min(cAmount, dAmount);
 
             results.push(`${dName} pays ${cName} Rp ${payAmount.toLocaleString()}`);
@@ -237,4 +288,3 @@ permalink: /split-bill/
             results.map(r => `<li>${r}</li>`).join("") + `</ul>`;
     }
 </script>
-
