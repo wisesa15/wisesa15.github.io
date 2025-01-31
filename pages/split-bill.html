@@ -62,9 +62,14 @@ permalink: /split-bill/
 
 <script>
     let people = [];
+    
+    function getNextId() {
+        // ... before people is spread operator in js since Math.max cant directly passed a list
+        return people.length > 0 ? Math.max(...people.map(p => p.id)) + 1 : 1;
+    }
 
-    function addPerson(name = "Person " + (people.length + 1)) {
-        people.push(name);
+    function addPerson(person = {"id":getNextId(), "name": `Person ${getNextId()}`}) {
+        people.push(person);
         updatePeopleTable();
         updateExpenseTable();
 
@@ -76,6 +81,8 @@ permalink: /split-bill/
             inputField.select();
         }, 0);
     }
+
+
 
     function removePerson(index) {
         people.splice(index, 1);
@@ -92,15 +99,15 @@ permalink: /split-bill/
         let table = document.querySelector("#peopleTable tbody");
         table.innerHTML = ``;
 
-        people.forEach((name, index) => {
+        people.forEach((person, index) => {
             let row = table.insertRow();
-            row.insertCell(0).innerHTML = `<input type="text" value="${name}" onchange="updatePersonName(${index}, this.value)">`;
+            row.insertCell(0).innerHTML = `<input type="text" value="${person.name}" onchange="updatePersonName(${index}, this.value)">`;
             row.insertCell(1).innerHTML = `<button onclick="removePerson(${index})">Remove</button>`;
         });
     }
 
     function updatePersonName(index, newName) {
-        people[index] = newName;
+        people[index].name = newName;
         updateExpenseTable();
     }
 
@@ -114,7 +121,7 @@ permalink: /split-bill/
         let distCell = row.insertCell(3);
         let actionCell = row.insertCell(4);
         
-        payerCell.innerHTML = `<select>${people.map(p => `<option>${p}</option>`).join('')}</select>`;
+        payerCell.innerHTML = `<select>${people.map(p => `<option value=${p.id}>${p.name}</option>`).join('')}</select>`;
         amountCell.innerHTML = `
             <div style="display: inline-flex; align-items: center; gap: 5px;">
             <button onclick="changeAmount(this, -1)">-</button>
@@ -125,7 +132,7 @@ permalink: /split-bill/
         descCell.innerHTML = `<input type="text" placeholder="Description">`;
 
         let distInputs = people.map((p, i) => `<div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
-            <span style="flex-grow: 1; text-align: left;">${p}:</span>
+            <span style="flex-grow: 1; text-align: left;">${p.name}:</span>
             <div style="display: inline-flex; align-items: center; gap: 5px;">
             <button onclick="changeAmount(this, -1, ${i})">-</button>
             <input type="text" value="1" oninput="formatNumber(this)" onblur="ensureNumber(this)">
@@ -185,7 +192,7 @@ permalink: /split-bill/
         document.querySelectorAll("#expenseTable tr").forEach((row, index) => {
             if (index === 0) return;
 
-            let payer = row.cells[0].querySelector("select").value;
+            let payer = row.cells[0].querySelector("select").value; 
             let amount = parseFloat(row.cells[1].querySelector("input").value.replace(/,/g, "")) || 0;
             let distInputs = row.cells[3].querySelectorAll("input");
 
@@ -197,7 +204,7 @@ permalink: /split-bill/
             let finalShares = rawValues.map(val => (sumValues > 0 ? (val / sumValues) * amount : 0));
 
             distInputs.forEach((input, i) => {
-                let person = people[i];
+                let person = people[i].id; // ganti jadi people find
                 let share = finalShares[i];
 
                 if (!balances[person]) balances[person] = 0;
@@ -211,17 +218,19 @@ permalink: /split-bill/
             if (balance > 0) creditors.push([person, balance]);
             else if (balance < 0) debtors.push([person, -balance]);
         }
-
+        
         let results = [];
         while (creditors.length > 0 && debtors.length > 0) {
-            let [cName, cAmount] = creditors.pop();
-            let [dName, dAmount] = debtors.pop();
+            let [cId, cAmount] = creditors.pop();
+            cName = people.find(p => p.id === parseInt(cId)).name
+            let [dId, dAmount] = debtors.pop();
+            dName = people.find(p => p.id === parseInt(dId)).name
             let payAmount = Math.min(cAmount, dAmount);
 
             results.push(`${dName} pays ${cName} Rp ${payAmount.toLocaleString()}`);
             
-            if (cAmount > dAmount) creditors.push([cName, cAmount - dAmount]);
-            else if (dAmount > cAmount) debtors.push([dName, dAmount - cAmount]);
+            if (cAmount > dAmount) creditors.push([cId, cAmount - dAmount]);
+            else if (dAmount > cAmount) debtors.push([dId, dAmount - cAmount]);
         }
 
         document.getElementById("output").innerHTML = `<h3>Transactions:</h3><ul>` + 
