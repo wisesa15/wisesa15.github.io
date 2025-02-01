@@ -43,3 +43,40 @@ To do:
 }
 ]
 }
+
+{
+"people": ["Priyo", "Rakha", "Nopa", "Lukas"],
+"expenses": [
+{
+"payer": "Lukas",
+"amount": 70000,
+"description": "Billiard",
+"distribution": {
+"Priyo": 1,
+"Rakha": 1,
+"Nopa": 1,
+"Lukas": 1
+}
+},
+{
+"payer": "Lukas",
+"amount": 84000,
+"description": "Food",
+"distribution": {
+"Rakha": 1,
+"Lukas": 1
+}
+},
+{
+"payer": "Rakha",
+"amount": 68000,
+"discount": 5000,
+"description": "Coffee",
+"distribution": {
+"Priyo": 20000,
+"Lukas": 24000,
+"Rakha": 24000
+}
+}
+]
+}

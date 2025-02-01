@@ -14,6 +14,17 @@ permalink: /split-bill/
 </style>
 
 <div class="container my-5">
+    <div class="text-center mb-4">
+        <label for="apiKeyInput">Enter your Gemini API Key:</label>
+        <div class="input-group">
+            <input type="password" id="apiKeyInput" placeholder="Your API Key" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility()">
+                <i id="toggleIcon" class="bi bi-eye"></i> <!-- Bootstrap Icons (eye icon) -->
+            </button>
+        </div>
+        <button id="setApiKeyButton" class="btn btn-secondary mt-2" onclick="setApiKey()">Set API Key</button>
+    </div>
+
     <!-- Chat Toggle Button -->
     <div class="text-center mb-4">
         <button id="chatToggle" class="btn btn-info" onclick="toggleChat()">Activate Chat</button>
@@ -84,6 +95,171 @@ permalink: /split-bill/
     let people = [];
     let expenses = [];
     let chatActive = false;
+    let geminiApiKey = null;
+
+    const MODEL_NAME = 'gemini-1.5-flash-002'; // Model name
+
+    // Define the tools and tool_config
+    const TOOLS = [
+        {
+            functionDeclarations: [
+                {
+                    name: "split_bill",
+                    description: "Split user's bill based on extracted expense from user chat.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            expenses: {
+                                type: "array",
+                                description: "Array of expenses with details about payers, amounts, discounts, and distribution.",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        people: {
+                                            type: "array",
+                                            description: "List of names of people involved in splitting the bill.",
+                                            items: {
+                                                type: "string"
+                                            }
+                                        },
+                                        expenses: {
+                                            type: "array",
+                                            description: "List of individual expenses.",
+                                            items: {
+                                                type: "object",
+                                                properties: {
+                                                    payer: {
+                                                        type: "string",
+                                                        description: "The name of the person who paid for this expense."
+                                                    },
+                                                    amount: {
+                                                        type: "integer",
+                                                        description: "The amount paid for this expense."
+                                                    },
+                                                    discount: {
+                                                        type: "integer",
+                                                        description: "The discount applied to this expense (optional)."
+                                                    },
+                                                    description: {
+                                                        type: "string",
+                                                        description: "A description of the expense."
+                                                    },
+                                                    distribution: {
+                                                        type: "array",
+                                                        description: "The distribution of the expense among people.",
+                                                        items: {
+                                                            type: "object",
+                                                            properties: {
+                                                                name: {
+                                                                    type: "string",
+                                                                    description: "The name of the person."
+                                                                },
+                                                                share: {
+                                                                    type: "integer",
+                                                                    description: "The share of the expense for this person."
+                                                                }
+                                                            },
+                                                            required: ["name", "share"]
+                                                        }
+                                                    }
+                                                },
+                                                required: ["payer", "amount", "description", "distribution"]
+                                            }
+                                        }
+                                    },
+                                    required: ["people", "expenses"]
+                                }
+                            }
+                        },
+                        required: ["expenses"]
+                    }
+                },
+                {
+                    name: "response",
+                    description: "Use this function when you want to do basic interaction with user without calling any function.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            resp: {
+                                type: "string",
+                                description: "Your response to user"
+                            }
+                        },
+                        required: ["resp"]
+                    }
+                }
+            ]
+        }
+    ];
+
+    const TOOLS_CONFIG = {
+        functionCallingConfig: {
+            mode: "ANY"
+        }
+    };
+
+    const PROMPT = "You are a helpful assistant that gonna help to extract user expenses from their chat. If you don't do function calling, only answer user's question in Bahasa Indonesia.";
+
+    // Function to set the API key
+    function setApiKey() {
+        const apiKeyInput = document.getElementById("apiKeyInput");
+        geminiApiKey = apiKeyInput.value.trim();
+
+        if (geminiApiKey) {
+            alert("API Key set successfully!");
+        } else {
+            alert("Please enter a valid API Key.");
+        }
+    }
+
+    // Function to call the Gemini API
+    async function callGeminiAPI(userMessage) {
+        if (!geminiApiKey) {
+            addChatMessage("Please set your Gemini API Key first.", false);
+            return null;
+        }
+
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiApiKey}`;
+
+        const payload = {
+            contents: [
+                {
+                    parts: [
+                        { text: userMessage }
+                    ],
+                    role: "user"
+                }
+            ],
+            tools: TOOLS,
+            toolConfig: TOOLS_CONFIG,
+            systemInstruction: {
+                parts: [
+                    { text: PROMPT }
+                ]
+            }
+        };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error("Error calling Gemini API:", error);
+            addChatMessage("Failed to call the Gemini API. Please check your API Key and try again.", false);
+            return null;
+        }
+    }
 
     // Chat Toggle Function
     function toggleChat() {
@@ -153,13 +329,6 @@ permalink: /split-bill/
         const llmResponse = await callLLMAPI(userMessage);
 
         addChatMessage(llmResponse, false); // Add LLM response to chat
-
-        // Parse LLM response and update application state
-        parseLLMResponse(llmResponse);
-
-        // Disable chat input and send button after processing
-        chatInput.disabled = true;
-        document.getElementById("sendButton").disabled = true;
     }
 
     function handleChatInput(event) {
@@ -170,90 +339,125 @@ permalink: /split-bill/
 
     // Simulated LLM API Call
     async function callLLMAPI(userMessage) {
-        // Replace this with an actual API call to your LLM
-        // For now, we simulate a JSON response
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const response = JSON.stringify({
-                    "people": ["Priyo", "Rakha", "Nopa", "Lukas"],
-                    "expenses": [
-                        {
-                            "payer": "Lukas",
-                            "amount": 70000,
-                            "description": "Billiard",
-                            "distribution": {
-                                "Priyo": 1,
-                                "Rakha": 1,
-                                "Nopa": 1,
-                                "Lukas": 1
-                            }
-                        },
-                        {
-                            "payer": "Lukas",
-                            "amount": 84000,
-                            "description": "Food",
-                            "distribution": {
-                                "Rakha": 1,
-                                "Lukas": 1
-                            }
-                        },
-                        {
-                            "payer": "Rakha",
-                            "amount": 68000,
-                            "discount": 5000,
-                            "description": "Coffee",
-                            "distribution": {
-                                "Priyo": 20000,
-                                "Lukas": 24000,
-                                "Rakha": 24000
-                            }
-                        }
-                    ]
-                });
-                resolve(response);
-            }, 1000); // Simulate API delay
-        });
+        const response = await callGeminiAPI(userMessage);
+
+        if (response && response.candidates && response.candidates.length > 0) {
+            const candidate = response.candidates[0];
+            const functionCall = candidate.content.parts[0].functionCall;
+
+            if (functionCall) {
+                // Handle function call (e.g., split_bill)
+                if (functionCall.name === "split_bill") {
+                    const expenses = functionCall.args.expenses[0];
+                    parseLLMResponse(JSON.stringify(expenses)); // Parse and update application state
+                    return "The bill has been split successfully!";
+                } else if (functionCall.name === "response") {
+                    return functionCall.args.resp; // Return the response to the user
+                }
+            } else {
+                // Handle text response
+                return candidate.content.parts[0].text;
+            }
+        }
+
+        return "No response generated.";
     }
+    // async function callLLMAPI(userMessage) {
+    //     // Replace this with an actual API call to your LLM
+    //     // For now, we simulate a JSON response
+    //     return new Promise((resolve) => {
+    //         setTimeout(() => {
+    //             const response = JSON.stringify({
+    //                 "people": ["Priyo", "Rakha", "Nopa", "Lukas"],
+    //                 "expenses": [
+    //                     {
+    //                         "payer": "Lukas",
+    //                         "amount": 70000,
+    //                         "description": "Billiard",
+    //                         "distribution": {
+    //                             "Priyo": 1,
+    //                             "Rakha": 1,
+    //                             "Nopa": 1,
+    //                             "Lukas": 1
+    //                         }
+    //                     },
+    //                     {
+    //                         "payer": "Lukas",
+    //                         "amount": 84000,
+    //                         "description": "Food",
+    //                         "distribution": {
+    //                             "Rakha": 1,
+    //                             "Lukas": 1
+    //                         }
+    //                     },
+    //                     {
+    //                         "payer": "Rakha",
+    //                         "amount": 68000,
+    //                         "discount": 5000,
+    //                         "description": "Coffee",
+    //                         "distribution": {
+    //                             "Priyo": 20000,
+    //                             "Lukas": 24000,
+    //                             "Rakha": 24000
+    //                         }
+    //                     }
+    //                 ]
+    //             });
+    //             resolve(response);
+    //         }, 1000); // Simulate API delay
+    //     });
+    // }
 
     // Parse LLM Response and Update Application State
     function parseLLMResponse(response) {
-        // Clear existing data
-        people = [];
-        expenses = [];
-
-        // Parse the JSON response
-        const data = JSON.parse(response);
-
-        // Convert people array into objects with IDs
-        data.people.forEach((name, index) => {
-            people.push({ id: index + 1, name });
-        });
-
-        // Convert expenses array into the required format
-        data.expenses.forEach((expense, index) => {
-            const payer = people.find(p => p.name === expense.payer);
-            if (payer) {
-                const distribution = Object.entries(expense.distribution).map(([name, share]) => {
-                    const person = people.find(p => p.name === name);
-                    return { personId: person.id, share };
-                });
-
-                const newExpense = {
-                    id: expenses.length + 1,
-                    payer: payer.id,
-                    amount: expense.amount,
-                    discount: expense.discount || 0,
-                    description: expense.description,
-                    distribution
-                };
-                expenses.push(newExpense);
-            }
-        });
-
-        // Update UI
-        updatePeopleTable();
-        updateExpenseTable();
+        try {
+            console.log(response);
+            const data = JSON.parse(response);
+            
+            // Clear existing data
+            people = [];
+            expenses = [];
+            console.log(JSON.stringify(data.people));
+            
+            // Convert people array into objects with IDs
+            data.people.forEach((name, index) => {
+                people.push({ id: index + 1, name });
+            });
+            
+            // Convert expenses array into the required format
+            data.expenses.forEach((expense, index) => {
+                const payer = people.find(p => p.name === expense.payer);
+                if (payer) {
+                    const distribution = expense.distribution.map((prsn) => {
+                        const person = people.find(p => p.name === prsn.name);
+                        return { personId: person.id, share: prsn.share };
+                    });
+                    
+                    const newExpense = {
+                        id: expenses.length + 1,
+                        payer: payer.id,
+                        amount: expense.amount,
+                        discount: expense.discount || 0,
+                        description: expense.description,
+                        distribution
+                    };
+                    expenses.push(newExpense);
+                }
+            });
+            
+            // Update UI
+            updatePeopleTable();
+            updateExpenseTable();
+            
+            // Disable chat input and send button after processing
+            document.getElementById("chatInput").disabled = true;
+            document.getElementById("sendButton").disabled = true;
+        } catch (error) {
+            console.error("Error parsing LLM response:", error);
+            addChatMessage("Failed to parse the response. Please try again.", false);
+        }
     }
+
 
     // Existing Functions (unchanged)
     function getNextId() {
@@ -379,6 +583,21 @@ permalink: /split-bill/
 
     function ensureNumber(input) {
         if (input.value === "") input.value = "0";
+    }
+
+    function togglePasswordVisibility() {
+        const apiKeyInput = document.getElementById("apiKeyInput");
+        const toggleIcon = document.getElementById("toggleIcon");
+
+        if (apiKeyInput.type === "password") {
+            apiKeyInput.type = "text";
+            toggleIcon.classList.remove("bi-eye");
+            toggleIcon.classList.add("bi-eye-slash"); // Change icon to "eye-slash"
+        } else {
+            apiKeyInput.type = "password";
+            toggleIcon.classList.remove("bi-eye-slash");
+            toggleIcon.classList.add("bi-eye"); // Change icon back to "eye"
+        }
     }
 
     function changeAmount(button, direction, index, type) {
