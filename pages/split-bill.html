@@ -14,8 +14,38 @@ permalink: /split-bill/
 </style>
 
 <div class="container my-5">
+    <div class="text-center mb-4">
+        <label for="apiKeyInput">Enter your Gemini API Key:</label>
+        <div class="input-group">
+            <input type="password" id="apiKeyInput" placeholder="Your API Key" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility()">
+                <i id="toggleIcon" class="bi bi-eye"></i> <!-- Bootstrap Icons (eye icon) -->
+            </button>
+        </div>
+        <button id="setApiKeyButton" class="btn btn-secondary mt-2" onclick="setApiKey()">Set API Key</button>
+    </div>
+
+    <!-- Chat Toggle Button -->
+    <div class="text-center mb-4">
+        <button id="chatToggle" class="btn btn-info" onclick="toggleChat()">Activate Chat</button>
+        <button id="resetButton" class="btn btn-danger" onclick="resetChat()">Reset</button>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chatContainer" class="card p-3 mb-4" style="display: none;">
+        <h3>Chat with Bill Splitter</h3>
+        <div id="chatBox" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+            <div id="chatMessages"></div>
+        </div>
+        <div class="input-group">
+            <input type="text" id="chatInput" class="form-control" placeholder="Tell me about your bill..." onkeypress="handleChatInput(event)" disabled>
+            <button id="sendButton" class="btn btn-primary" onclick="sendChatMessage()" disabled>Send</button>
+        </div>
+    </div>
+
     <h2 class="text-center">Bill Splitter</h2>
 
+    <!-- People Section -->
     <div class="card p-3">
         <h3>People</h3>
         <button class="btn btn-primary my-2" onclick="addPerson()">Add Person</button>
@@ -33,6 +63,7 @@ permalink: /split-bill/
         </div>
     </div>
 
+    <!-- Expenses Section -->
     <div class="card p-3 mt-4">
         <h3>Enter Expenses</h3>
         <button class="btn btn-success my-2" onclick="addExpense()">Add Expense</button>
@@ -43,6 +74,7 @@ permalink: /split-bill/
                     <tr>
                         <th>Payer</th>
                         <th>Amount</th>
+                        <th>Discount</th>
                         <th>Description</th>
                         <th>Distribution</th>
                         <th>Action</th>
@@ -55,26 +87,348 @@ permalink: /split-bill/
         <button class="btn btn-warning mt-3" onclick="calculateSplit()">Calculate</button>
     </div>
 
+    <!-- Results Section -->
     <div class="result mt-4" id="output"></div>
 </div>
 
-
-
 <script>
     let people = [];
+    let expenses = [];
+    let chatActive = false;
+    let chatHistory = []; // Array to store chat history
+    let geminiApiKey = null;
 
-    function addPerson(name = "Person " + (people.length + 1)) {
-        people.push(name);
+    const MODEL_NAME = 'gemini-1.5-flash-002'; // Model name
+
+    // Define the tools and tool_config
+    const TOOLS = [
+        {
+            functionDeclarations: [
+                {
+                    name: "split_bill",
+                    description: "Split user's bill based on extracted expense from user chat.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            expenses: {
+                                type: "array",
+                                description: "Array of expenses with details about payers, amounts, discounts, and distribution.",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        people: {
+                                            type: "array",
+                                            description: "List of names of people involved in splitting the bill.",
+                                            items: {
+                                                type: "string"
+                                            }
+                                        },
+                                        expenses: {
+                                            type: "array",
+                                            description: "List of individual expenses.",
+                                            items: {
+                                                type: "object",
+                                                properties: {
+                                                    payer: {
+                                                        type: "string",
+                                                        description: "The name of the person who paid for this expense."
+                                                    },
+                                                    amount: {
+                                                        type: "integer",
+                                                        description: "The amount paid for this expense."
+                                                    },
+                                                    discount: {
+                                                        type: "integer",
+                                                        description: "The discount applied to this expense (optional)."
+                                                    },
+                                                    description: {
+                                                        type: "string",
+                                                        description: "A description of the expense."
+                                                    },
+                                                    distribution: {
+                                                        type: "array",
+                                                        description: "The distribution of the expense among people.",
+                                                        items: {
+                                                            type: "object",
+                                                            properties: {
+                                                                name: {
+                                                                    type: "string",
+                                                                    description: "The name of the person."
+                                                                },
+                                                                share: {
+                                                                    type: "integer",
+                                                                    description: "The share of the expense for this person."
+                                                                }
+                                                            },
+                                                            required: ["name", "share"]
+                                                        }
+                                                    }
+                                                },
+                                                required: ["payer", "amount", "description", "distribution"]
+                                            }
+                                        }
+                                    },
+                                    required: ["people", "expenses"]
+                                }
+                            }
+                        },
+                        required: ["expenses"]
+                    }
+                },
+                {
+                    name: "response",
+                    description: "Use this function when you want to do basic interaction with user without calling any function.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            resp: {
+                                type: "string",
+                                description: "Your response to user"
+                            }
+                        },
+                        required: ["resp"]
+                    }
+                }
+            ]
+        }
+    ];
+
+    const TOOLS_CONFIG = {
+        functionCallingConfig: {
+            mode: "ANY"
+        }
+    };
+
+    const PROMPT = "You are a helpful assistant that gonna help to extract user expenses from their chat. If you don't do function calling, only answer user's question in Bahasa Indonesia.";
+
+    // Function to set the API key
+    function setApiKey() {
+        const apiKeyInput = document.getElementById("apiKeyInput");
+        geminiApiKey = apiKeyInput.value.trim();
+
+        if (geminiApiKey) {
+            alert("API Key set successfully!");
+        } else {
+            alert("Please enter a valid API Key.");
+        }
+    }
+
+    // Function to call the Gemini API
+    async function callGeminiAPIWithHistory(chatHistory) {
+        if (!geminiApiKey) {
+            addChatMessage("Please set your Gemini API Key first.", false);
+            return null;
+        }
+
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiApiKey}`;
+        console.log(`chat history ${JSON.stringify(chatHistory)}`)
+        const payload = {
+            contents: chatHistory, // Include the entire chat history
+            tools: TOOLS,
+            toolConfig: TOOLS_CONFIG,
+            systemInstruction: {
+                parts: [
+                    { text: PROMPT }
+                ]
+            }
+        };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`data: ${JSON.stringify(data)}`)
+            return data; // Return the model's response
+        } catch (error) {
+            console.error("Error calling Gemini API:", error);
+            addChatMessage("Failed to call the Gemini API. Please check your API Key and try again.", false);
+            return null;
+        }
+    }
+
+    // Chat Toggle Function
+    function toggleChat() {
+        const chatContainer = document.getElementById("chatContainer");
+        const chatToggle = document.getElementById("chatToggle");
+        const chatInput = document.getElementById("chatInput");
+        const sendButton = document.getElementById("sendButton");
+
+        chatActive = !chatActive;
+
+        if (chatActive) {
+            chatContainer.style.display = "block";
+            chatToggle.textContent = "Deactivate Chat";
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+        } else {
+            chatContainer.style.display = "none";
+            chatToggle.textContent = "Activate Chat";
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+        }
+    }
+
+    // Reset Function
+    function resetChat() {
+        // Clear chat history
+        chatHistory = [];
+
+        // Clear chat messages in UI
+        document.getElementById("chatMessages").innerHTML = "";
+
+        // Clear people and expenses
+        people = [];
+        expenses = [];
+
+        // Update UI
         updatePeopleTable();
         updateExpenseTable();
 
-        // Automatically focus and highlight the name input
-        setTimeout(() => {
-            let lastRow = document.getElementById("peopleTable").rows[people.length];
-            let inputField = lastRow.cells[0].querySelector("input");
-            inputField.focus();
-            inputField.select();
-        }, 0);
+        // Reset output
+        document.getElementById("output").innerHTML = "";
+
+        // Deactivate chat
+        chatActive = false;
+        document.getElementById("chatContainer").style.display = "none";
+        document.getElementById("chatToggle").textContent = "Activate Chat";
+        document.getElementById("chatInput").disabled = true;
+        document.getElementById("sendButton").disabled = true;
+    }
+
+    // Chat Interface Functions
+    function addChatMessage(message, isUser = true) {
+        const chatMessages = document.getElementById("chatMessages");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = isUser ? "text-end" : "text-start";
+        messageDiv.innerHTML = `<div class="alert ${isUser ? 'alert-primary' : 'alert-secondary'}" role="alert">${message}</div>`;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+    }
+
+    async function sendChatMessage() {
+        const chatInput = document.getElementById("chatInput");
+        const userMessage = chatInput.value.trim();
+        if (!userMessage) return;
+
+        // Add user message to chat history
+        chatHistory.push({ role: "user", parts: [{ text: userMessage }] });
+
+        // Add user message to chat UI
+        addChatMessage(userMessage, true);
+        chatInput.value = ""; // Clear input
+
+        // Call Gemini API with chat history
+        const llmResponse = await callLLMAPI(chatHistory);
+
+        // Add model's response to chat history
+        chatHistory.push({ role: "model", parts: [{ text: llmResponse }] });
+
+        // Add model's response to chat UI
+        addChatMessage(llmResponse, false);
+    }
+
+    function handleChatInput(event) {
+        if (event.key === "Enter") {
+            sendChatMessage();
+        }
+    }
+
+    // Simulated LLM API Call
+    async function callLLMAPI(chatHistory) {
+        const response = await callGeminiAPIWithHistory(chatHistory);
+        console.log(JSON.stringify(response))
+        if (response && response.candidates && response.candidates.length > 0) {
+            const candidate = response.candidates[0];
+            const functionCall = candidate.content.parts[0].functionCall;
+
+            if (functionCall) {
+                // Handle function call (e.g., split_bill)
+                if (functionCall.name === "split_bill") {
+                    const expenses = functionCall.args.expenses[0];
+                    parseLLMResponse(JSON.stringify(expenses)); // Parse and update application state
+                    return "The bill has been split successfully!";
+                } else if (functionCall.name === "response") {
+                    return functionCall.args.resp; // Return the response to the user
+                }
+            } else {
+                // Handle text response
+                return candidate.content.parts[0].text;
+            }
+        }
+
+        return "No response generated.";
+    }
+
+    // Parse LLM Response and Update Application State
+    function parseLLMResponse(response) {
+        try {
+            console.log(response);
+            const data = JSON.parse(response);
+            
+            // Clear existing data
+            people = [];
+            expenses = [];
+            console.log(JSON.stringify(data.people));
+            
+            // Convert people array into objects with IDs
+            data.people.forEach((name, index) => {
+                people.push({ id: index + 1, name });
+            });
+            
+            // Convert expenses array into the required format
+            data.expenses.forEach((expense, index) => {
+                const payer = people.find(p => p.name === expense.payer);
+                if (payer) {
+                    const distribution = expense.distribution.map((prsn) => {
+                        const person = people.find(p => p.name === prsn.name);
+                        return { personId: person.id, share: prsn.share };
+                    });
+                    
+                    const newExpense = {
+                        id: expenses.length + 1,
+                        payer: payer.id,
+                        amount: expense.amount,
+                        discount: expense.discount || 0,
+                        description: expense.description,
+                        distribution
+                    };
+                    expenses.push(newExpense);
+                }
+            });
+            
+            // Update UI
+            updatePeopleTable();
+            updateExpenseTable();
+            
+            // Disable chat input and send button after processing
+            document.getElementById("chatInput").disabled = true;
+            document.getElementById("sendButton").disabled = true;
+        } catch (error) {
+            console.error("Error parsing LLM response:", error);
+            addChatMessage("Failed to parse the response. Please try again.", false);
+        }
+    }
+
+
+    // Existing Functions (unchanged)
+    function getNextId() {
+        return people.length > 0 ? Math.max(...people.map(p => p.id)) + 1 : 1;
+    }
+
+    function addPerson(person = {"id": getNextId(), "name": `Person ${getNextId()}`}) {
+        people.push(person);
+        updatePeopleTable();
+        updateExpenseTable();
     }
 
     function removePerson(index) {
@@ -84,82 +438,103 @@ permalink: /split-bill/
     }
 
     function updatePeopleTable() {
-        // let table = document.getElementById("peopleTable");
-        // table.innerHTML = `<tr>
-        //     <th>Name</th>
-        //     <th>Action</th>
-        // </tr>`;
         let table = document.querySelector("#peopleTable tbody");
         table.innerHTML = ``;
 
-        people.forEach((name, index) => {
+        people.forEach((person, index) => {
             let row = table.insertRow();
-            row.insertCell(0).innerHTML = `<input type="text" value="${name}" onchange="updatePersonName(${index}, this.value)">`;
+            row.insertCell(0).innerHTML = `<input type="text" value="${person.name}" onchange="updatePersonName(${index}, this.value)">`;
             row.insertCell(1).innerHTML = `<button onclick="removePerson(${index})">Remove</button>`;
         });
     }
 
     function updatePersonName(index, newName) {
-        people[index] = newName;
+        people[index].name = newName;
         updateExpenseTable();
     }
 
     function addExpense() {
-        let table = document.getElementById("expenseTable");
-        let row = table.insertRow();
-        
-        let payerCell = row.insertCell(0);
-        let amountCell = row.insertCell(1);
-        let descCell = row.insertCell(2);
-        let distCell = row.insertCell(3);
-        let actionCell = row.insertCell(4);
-        
-        payerCell.innerHTML = `<select>${people.map(p => `<option>${p}</option>`).join('')}</select>`;
-        amountCell.innerHTML = `
-            <div style="display: inline-flex; align-items: center; gap: 5px;">
-            <button onclick="changeAmount(this, -1)">-</button>
-            <input type="text" value="0" oninput="formatNumber(this)" onblur="ensureNumber(this)">
-            <button onclick="changeAmount(this, 1)">+</button>
-            </div>
-        `;
-        descCell.innerHTML = `<input type="text" placeholder="Description">`;
-
-        let distInputs = people.map((p, i) => `<div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
-            <span style="flex-grow: 1; text-align: left;">${p}:</span>
-            <div style="display: inline-flex; align-items: center; gap: 5px;">
-            <button onclick="changeAmount(this, -1, ${i})">-</button>
-            <input type="text" value="1" oninput="formatNumber(this)" onblur="ensureNumber(this)">
-            <button onclick="changeAmount(this, 1, ${i})">+</button>
-            </div>
-            </div>`).join('<br>');
-        distCell.innerHTML = distInputs;
-
-        actionCell.innerHTML = `<button onclick="removeRow(this)">Remove</button>`;
-
-        // Automatically focus and highlight the amount input
-        setTimeout(() => {
-            let inputField = row.cells[1].querySelector("input");
-            inputField.focus();
-            inputField.select();
-        }, 0);
+        let expense = {
+            id: expenses.length + 1,
+            payer: people[0]?.id || null,
+            amount: 0,
+            discount: 0,
+            description: "",
+            distribution: people.map(p => ({ personId: p.id, share: 1 }))
+        };
+        expenses.push(expense);
+        updateExpenseTable();
     }
 
     function updateExpenseTable() {
-        // let table = document.getElementById("expenseTable");
-        // table.innerHTML = `<tr>
-        //     <th>Payer</th>
-        //     <th>Amount</th>
-        //     <th>Description</th>
-        //     <th>Distribution</th>
-        //     <th>Action</th>
-        // </tr>`;
         let table = document.querySelector("#expenseTable tbody");
         table.innerHTML = ``;
+
+        expenses.forEach((expense, index) => {
+            let row = table.insertRow();
+            
+            let payerCell = row.insertCell(0);
+            let amountCell = row.insertCell(1);
+            let discountCell = row.insertCell(2);
+            let descCell = row.insertCell(3);
+            let distCell = row.insertCell(4);
+            let actionCell = row.insertCell(5);
+            
+            payerCell.innerHTML = `<select onchange="updateExpensePayer(${index}, this.value)">${people.map(p => `<option value=${p.id} ${p.id === expense.payer ? 'selected' : ''}>${p.name}</option>`).join('')}</select>`;
+            amountCell.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                <button onclick="changeAmount(this, -1, ${index}, 'amount')">-</button>
+                <input type="text" value="${expense.amount.toLocaleString()}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseAmount(${index}, this.value)">
+                <button onclick="changeAmount(this, 1, ${index}, 'amount')">+</button>
+                </div>
+            `;
+            discountCell.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 5px;">
+                <button onclick="changeAmount(this, -1, ${index}, 'discount')">-</button>
+                <input type="text" value="${expense.discount.toLocaleString()}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseDiscount(${index}, this.value)">
+                <button onclick="changeAmount(this, 1, ${index}, 'discount')">+</button>
+                </div>
+            `;
+            descCell.innerHTML = `<input type="text" value="${expense.description}" onchange="updateExpenseDescription(${index}, this.value)">`;
+
+            let distInputs = expense.distribution.map((dist, i) => `
+                <div style="display: flex; align-items: center; justify-content: space-around; gap: 5px;">
+                    <span style="flex-grow: 1; text-align: left;">${people.find(p => p.id === dist.personId).name}:</span>
+                    <div style="display: inline-flex; align-items: center; gap: 5px;">
+                        <button onclick="changeDistribution(this, -1, ${index}, ${i})">-</button>
+                        <input type="text" value="${dist.share}" oninput="formatNumber(this)" onblur="ensureNumber(this); updateExpenseDistribution(${index}, ${i}, this.value)">
+                        <button onclick="changeDistribution(this, 1, ${index}, ${i})">+</button>
+                    </div>
+                </div>`).join('<br>');
+            distCell.innerHTML = distInputs;
+
+            actionCell.innerHTML = `<button onclick="removeExpense(${index})">Remove</button>`;
+        });
     }
 
-    function removeRow(button) {
-        let row = button.parentNode.parentNode;
-        row.parentNode.removeChild(row);
+    function removeExpense(index) {
+        expenses.splice(index, 1);
+        updateExpenseTable();
+    }
+
+    function updateExpensePayer(index, payerId) {
+        expenses[index].payer = parseInt(payerId);
+    }
+
+    function updateExpenseAmount(index, amount) {
+        expenses[index].amount = parseFloat(amount.replace(/,/g, "")) || 0;
+    }
+
+    function updateExpenseDiscount(index, discount) {
+        expenses[index].discount = parseFloat(discount.replace(/,/g, "")) || 0;
+    }
+
+    function updateExpenseDescription(index, description) {
+        expenses[index].description = description;
+    }
+
+    function updateExpenseDistribution(index, distIndex, share) {
+        expenses[index].distribution[distIndex].share = parseFloat(share.replace(/,/g, "")) || 0;
     }
 
     function formatNumber(input) {
@@ -171,61 +546,89 @@ permalink: /split-bill/
         if (input.value === "") input.value = "0";
     }
 
-    function changeAmount(button, direction, index=0) {
-        let inputs = button.parentNode.querySelectorAll("input");
-        let input = inputs[index]
+    function togglePasswordVisibility() {
+        const apiKeyInput = document.getElementById("apiKeyInput");
+        const toggleIcon = document.getElementById("toggleIcon");
+
+        if (apiKeyInput.type === "password") {
+            apiKeyInput.type = "text";
+            toggleIcon.classList.remove("bi-eye");
+            toggleIcon.classList.add("bi-eye-slash"); // Change icon to "eye-slash"
+        } else {
+            apiKeyInput.type = "password";
+            toggleIcon.classList.remove("bi-eye-slash");
+            toggleIcon.classList.add("bi-eye"); // Change icon back to "eye"
+        }
+    }
+
+    function changeAmount(button, direction, index, type) {
+        let input = button.parentNode.querySelector("input");
         let value = parseInt(input.value.replace(/,/g, ""), 10) || 0;
         let step = Math.pow(10, Math.floor(Math.log10(value || 1)));
         input.value = (value + step * direction).toLocaleString();
+
+        if (type === 'amount') {
+            updateExpenseAmount(index, input.value);
+        } else if (type === 'discount') {
+            updateExpenseDiscount(index, input.value);
+        }
+    }
+
+    function changeDistribution(button, direction, expenseIndex, distIndex) {
+        let input = button.parentNode.querySelector("input");
+        let value = parseInt(input.value.replace(/,/g, ""), 10) || 0;
+        let step = Math.pow(10, Math.floor(Math.log10(value || 1)));
+        input.value = (value + step * direction).toLocaleString();
+        updateExpenseDistribution(expenseIndex, distIndex, input.value);
     }
 
     function calculateSplit() {
         let balances = {};
 
-        document.querySelectorAll("#expenseTable tr").forEach((row, index) => {
-            if (index === 0) return;
+        expenses.forEach(expense => {
+            let payer = expense.payer;
+            let amount = expense.amount;
+            let discount = expense.discount;
+            let distribution = expense.distribution;
 
-            let payer = row.cells[0].querySelector("select").value;
-            let amount = parseFloat(row.cells[1].querySelector("input").value.replace(/,/g, "")) || 0;
-            let distInputs = row.cells[3].querySelectorAll("input");
+            let totalAfterDiscount = amount - discount;
 
             if (!balances[payer]) balances[payer] = 0;
-            balances[payer] += amount;
+            balances[payer] += totalAfterDiscount;
 
-            let rawValues = Array.from(distInputs).map(input => parseFloat(input.value.replace(/,/g, "")) || 0);
-            let sumValues = rawValues.reduce((sum, val) => sum + val, 0);
-            let finalShares = rawValues.map(val => (sumValues > 0 ? (val / sumValues) * amount : 0));
+            let totalShares = distribution.reduce((sum, dist) => sum + dist.share, 0);
 
-            distInputs.forEach((input, i) => {
-                let person = people[i];
-                let share = finalShares[i];
+            distribution.forEach(dist => {
+                let personId = dist.personId;
+                let share = (dist.share / totalShares) * totalAfterDiscount;
 
-                if (!balances[person]) balances[person] = 0;
-                balances[person] -= share;
+                if (!balances[personId]) balances[personId] = 0;
+                balances[personId] -= share;
             });
         });
 
         let creditors = [], debtors = [];
-        for (let person in balances) {
-            let balance = balances[person];
-            if (balance > 0) creditors.push([person, balance]);
-            else if (balance < 0) debtors.push([person, -balance]);
+        for (let personId in balances) {
+            let balance = balances[personId];
+            if (balance > 0) creditors.push([personId, balance]);
+            else if (balance < 0) debtors.push([personId, -balance]);
         }
-
+        
         let results = [];
         while (creditors.length > 0 && debtors.length > 0) {
-            let [cName, cAmount] = creditors.pop();
-            let [dName, dAmount] = debtors.pop();
+            let [cId, cAmount] = creditors.pop();
+            let cName = people.find(p => p.id === parseInt(cId)).name;
+            let [dId, dAmount] = debtors.pop();
+            let dName = people.find(p => p.id === parseInt(dId)).name;
             let payAmount = Math.min(cAmount, dAmount);
 
             results.push(`${dName} pays ${cName} Rp ${payAmount.toLocaleString()}`);
             
-            if (cAmount > dAmount) creditors.push([cName, cAmount - dAmount]);
-            else if (dAmount > cAmount) debtors.push([dName, dAmount - cAmount]);
+            if (cAmount > dAmount) creditors.push([cId, cAmount - dAmount]);
+            else if (dAmount > cAmount) debtors.push([dId, dAmount - cAmount]);
         }
 
         document.getElementById("output").innerHTML = `<h3>Transactions:</h3><ul>` + 
             results.map(r => `<li>${r}</li>`).join("") + `</ul>`;
     }
 </script>
-
