@@ -95,6 +95,7 @@ permalink: /split-bill/
     let people = [];
     let expenses = [];
     let chatActive = false;
+    let chatHistory = []; // Array to store chat history
     let geminiApiKey = null;
 
     const MODEL_NAME = 'gemini-1.5-flash-002'; // Model name
@@ -213,23 +214,16 @@ permalink: /split-bill/
     }
 
     // Function to call the Gemini API
-    async function callGeminiAPI(userMessage) {
+    async function callGeminiAPIWithHistory(chatHistory) {
         if (!geminiApiKey) {
             addChatMessage("Please set your Gemini API Key first.", false);
             return null;
         }
 
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiApiKey}`;
-
+        console.log(`chat history ${JSON.stringify(chatHistory)}`)
         const payload = {
-            contents: [
-                {
-                    parts: [
-                        { text: userMessage }
-                    ],
-                    role: "user"
-                }
-            ],
+            contents: chatHistory, // Include the entire chat history
             tools: TOOLS,
             toolConfig: TOOLS_CONFIG,
             systemInstruction: {
@@ -253,7 +247,8 @@ permalink: /split-bill/
             }
 
             const data = await response.json();
-            return data;
+            console.log(`data: ${JSON.stringify(data)}`)
+            return data; // Return the model's response
         } catch (error) {
             console.error("Error calling Gemini API:", error);
             addChatMessage("Failed to call the Gemini API. Please check your API Key and try again.", false);
@@ -285,7 +280,10 @@ permalink: /split-bill/
 
     // Reset Function
     function resetChat() {
-        // Clear chat messages
+        // Clear chat history
+        chatHistory = [];
+
+        // Clear chat messages in UI
         document.getElementById("chatMessages").innerHTML = "";
 
         // Clear people and expenses
@@ -322,13 +320,21 @@ permalink: /split-bill/
         const userMessage = chatInput.value.trim();
         if (!userMessage) return;
 
-        addChatMessage(userMessage, true); // Add user message to chat
+        // Add user message to chat history
+        chatHistory.push({ role: "user", parts: [{ text: userMessage }] });
+
+        // Add user message to chat UI
+        addChatMessage(userMessage, true);
         chatInput.value = ""; // Clear input
 
-        // Simulate LLM API call
-        const llmResponse = await callLLMAPI(userMessage);
+        // Call Gemini API with chat history
+        const llmResponse = await callLLMAPI(chatHistory);
 
-        addChatMessage(llmResponse, false); // Add LLM response to chat
+        // Add model's response to chat history
+        chatHistory.push({ role: "model", parts: [{ text: llmResponse }] });
+
+        // Add model's response to chat UI
+        addChatMessage(llmResponse, false);
     }
 
     function handleChatInput(event) {
@@ -338,9 +344,9 @@ permalink: /split-bill/
     }
 
     // Simulated LLM API Call
-    async function callLLMAPI(userMessage) {
-        const response = await callGeminiAPI(userMessage);
-
+    async function callLLMAPI(chatHistory) {
+        const response = await callGeminiAPIWithHistory(chatHistory);
+        console.log(JSON.stringify(response))
         if (response && response.candidates && response.candidates.length > 0) {
             const candidate = response.candidates[0];
             const functionCall = candidate.content.parts[0].functionCall;
@@ -362,51 +368,6 @@ permalink: /split-bill/
 
         return "No response generated.";
     }
-    // async function callLLMAPI(userMessage) {
-    //     // Replace this with an actual API call to your LLM
-    //     // For now, we simulate a JSON response
-    //     return new Promise((resolve) => {
-    //         setTimeout(() => {
-    //             const response = JSON.stringify({
-    //                 "people": ["Priyo", "Rakha", "Nopa", "Lukas"],
-    //                 "expenses": [
-    //                     {
-    //                         "payer": "Lukas",
-    //                         "amount": 70000,
-    //                         "description": "Billiard",
-    //                         "distribution": {
-    //                             "Priyo": 1,
-    //                             "Rakha": 1,
-    //                             "Nopa": 1,
-    //                             "Lukas": 1
-    //                         }
-    //                     },
-    //                     {
-    //                         "payer": "Lukas",
-    //                         "amount": 84000,
-    //                         "description": "Food",
-    //                         "distribution": {
-    //                             "Rakha": 1,
-    //                             "Lukas": 1
-    //                         }
-    //                     },
-    //                     {
-    //                         "payer": "Rakha",
-    //                         "amount": 68000,
-    //                         "discount": 5000,
-    //                         "description": "Coffee",
-    //                         "distribution": {
-    //                             "Priyo": 20000,
-    //                             "Lukas": 24000,
-    //                             "Rakha": 24000
-    //                         }
-    //                     }
-    //                 ]
-    //             });
-    //             resolve(response);
-    //         }, 1000); // Simulate API delay
-    //     });
-    // }
 
     // Parse LLM Response and Update Application State
     function parseLLMResponse(response) {
