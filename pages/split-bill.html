@@ -14,8 +14,27 @@ permalink: /split-bill/
 </style>
 
 <div class="container my-5">
+    <!-- Chat Toggle Button -->
+    <div class="text-center mb-4">
+        <button id="chatToggle" class="btn btn-info" onclick="toggleChat()">Activate Chat</button>
+        <button id="resetButton" class="btn btn-danger" onclick="resetChat()">Reset</button>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chatContainer" class="card p-3 mb-4" style="display: none;">
+        <h3>Chat with Bill Splitter</h3>
+        <div id="chatBox" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+            <div id="chatMessages"></div>
+        </div>
+        <div class="input-group">
+            <input type="text" id="chatInput" class="form-control" placeholder="Tell me about your bill..." onkeypress="handleChatInput(event)" disabled>
+            <button id="sendButton" class="btn btn-primary" onclick="sendChatMessage()" disabled>Send</button>
+        </div>
+    </div>
+
     <h2 class="text-center">Bill Splitter</h2>
 
+    <!-- People Section -->
     <div class="card p-3">
         <h3>People</h3>
         <button class="btn btn-primary my-2" onclick="addPerson()">Add Person</button>
@@ -33,6 +52,7 @@ permalink: /split-bill/
         </div>
     </div>
 
+    <!-- Expenses Section -->
     <div class="card p-3 mt-4">
         <h3>Enter Expenses</h3>
         <button class="btn btn-success my-2" onclick="addExpense()">Add Expense</button>
@@ -56,44 +76,198 @@ permalink: /split-bill/
         <button class="btn btn-warning mt-3" onclick="calculateSplit()">Calculate</button>
     </div>
 
+    <!-- Results Section -->
     <div class="result mt-4" id="output"></div>
 </div>
 
 <script>
     let people = [];
     let expenses = [];
+    let chatActive = false;
 
+    // Chat Toggle Function
+    function toggleChat() {
+        const chatContainer = document.getElementById("chatContainer");
+        const chatToggle = document.getElementById("chatToggle");
+        const chatInput = document.getElementById("chatInput");
+        const sendButton = document.getElementById("sendButton");
+
+        chatActive = !chatActive;
+
+        if (chatActive) {
+            chatContainer.style.display = "block";
+            chatToggle.textContent = "Deactivate Chat";
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+        } else {
+            chatContainer.style.display = "none";
+            chatToggle.textContent = "Activate Chat";
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+        }
+    }
+
+    // Reset Function
+    function resetChat() {
+        // Clear chat messages
+        document.getElementById("chatMessages").innerHTML = "";
+
+        // Clear people and expenses
+        people = [];
+        expenses = [];
+
+        // Update UI
+        updatePeopleTable();
+        updateExpenseTable();
+
+        // Reset output
+        document.getElementById("output").innerHTML = "";
+
+        // Deactivate chat
+        chatActive = false;
+        document.getElementById("chatContainer").style.display = "none";
+        document.getElementById("chatToggle").textContent = "Activate Chat";
+        document.getElementById("chatInput").disabled = true;
+        document.getElementById("sendButton").disabled = true;
+    }
+
+    // Chat Interface Functions
+    function addChatMessage(message, isUser = true) {
+        const chatMessages = document.getElementById("chatMessages");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = isUser ? "text-end" : "text-start";
+        messageDiv.innerHTML = `<div class="alert ${isUser ? 'alert-primary' : 'alert-secondary'}" role="alert">${message}</div>`;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+    }
+
+    async function sendChatMessage() {
+        const chatInput = document.getElementById("chatInput");
+        const userMessage = chatInput.value.trim();
+        if (!userMessage) return;
+
+        addChatMessage(userMessage, true); // Add user message to chat
+        chatInput.value = ""; // Clear input
+
+        // Simulate LLM API call
+        const llmResponse = await callLLMAPI(userMessage);
+
+        addChatMessage(llmResponse, false); // Add LLM response to chat
+
+        // Parse LLM response and update application state
+        parseLLMResponse(llmResponse);
+
+        // Disable chat input and send button after processing
+        chatInput.disabled = true;
+        document.getElementById("sendButton").disabled = true;
+    }
+
+    function handleChatInput(event) {
+        if (event.key === "Enter") {
+            sendChatMessage();
+        }
+    }
+
+    // Simulated LLM API Call
+    async function callLLMAPI(userMessage) {
+        // Replace this with an actual API call to your LLM
+        // For now, we simulate a JSON response
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const response = JSON.stringify({
+                    "people": ["Priyo", "Rakha", "Nopa", "Lukas"],
+                    "expenses": [
+                        {
+                            "payer": "Lukas",
+                            "amount": 70000,
+                            "description": "Billiard",
+                            "distribution": {
+                                "Priyo": 1,
+                                "Rakha": 1,
+                                "Nopa": 1,
+                                "Lukas": 1
+                            }
+                        },
+                        {
+                            "payer": "Lukas",
+                            "amount": 84000,
+                            "description": "Food",
+                            "distribution": {
+                                "Rakha": 1,
+                                "Lukas": 1
+                            }
+                        },
+                        {
+                            "payer": "Rakha",
+                            "amount": 68000,
+                            "discount": 5000,
+                            "description": "Coffee",
+                            "distribution": {
+                                "Priyo": 20000,
+                                "Lukas": 24000,
+                                "Rakha": 24000
+                            }
+                        }
+                    ]
+                });
+                resolve(response);
+            }, 1000); // Simulate API delay
+        });
+    }
+
+    // Parse LLM Response and Update Application State
+    function parseLLMResponse(response) {
+        // Clear existing data
+        people = [];
+        expenses = [];
+
+        // Parse the JSON response
+        const data = JSON.parse(response);
+
+        // Convert people array into objects with IDs
+        data.people.forEach((name, index) => {
+            people.push({ id: index + 1, name });
+        });
+
+        // Convert expenses array into the required format
+        data.expenses.forEach((expense, index) => {
+            const payer = people.find(p => p.name === expense.payer);
+            if (payer) {
+                const distribution = Object.entries(expense.distribution).map(([name, share]) => {
+                    const person = people.find(p => p.name === name);
+                    return { personId: person.id, share };
+                });
+
+                const newExpense = {
+                    id: expenses.length + 1,
+                    payer: payer.id,
+                    amount: expense.amount,
+                    discount: expense.discount || 0,
+                    description: expense.description,
+                    distribution
+                };
+                expenses.push(newExpense);
+            }
+        });
+
+        // Update UI
+        updatePeopleTable();
+        updateExpenseTable();
+    }
+
+    // Existing Functions (unchanged)
     function getNextId() {
         return people.length > 0 ? Math.max(...people.map(p => p.id)) + 1 : 1;
     }
 
     function addPerson(person = {"id": getNextId(), "name": `Person ${getNextId()}`}) {
         people.push(person);
-
-        // Add the new person to the distribution of all existing expenses
-        expenses.forEach(expense => {
-            expense.distribution.push({ personId: person.id, share: 1 });
-        });
-
         updatePeopleTable();
         updateExpenseTable();
-
-        setTimeout(() => {
-            let lastRow = document.getElementById("peopleTable").rows[people.length];
-            let inputField = lastRow.cells[0].querySelector("input");
-            inputField.focus();
-            inputField.select();
-        }, 0);
     }
 
     function removePerson(index) {
-        let removedPerson = people.splice(index, 1)[0];
-
-        // Remove the person from the distribution of all existing expenses
-        expenses.forEach(expense => {
-            expense.distribution = expense.distribution.filter(dist => dist.personId !== removedPerson.id);
-        });
-
+        people.splice(index, 1);
         updatePeopleTable();
         updateExpenseTable();
     }
@@ -119,19 +293,12 @@ permalink: /split-bill/
             id: expenses.length + 1,
             payer: people[0]?.id || null,
             amount: 0,
-            discount: 0, // Default discount is 0
+            discount: 0,
             description: "",
-            distribution: people.map(p => ({ personId: p.id, share: 1 })) // Initialize distribution for all people
+            distribution: people.map(p => ({ personId: p.id, share: 1 }))
         };
         expenses.push(expense);
         updateExpenseTable();
-
-        setTimeout(() => {
-            let lastRow = document.querySelector("#expenseTable tbody").lastChild;
-            let inputField = lastRow.cells[1].querySelector("input");
-            inputField.focus();
-            inputField.select();
-        }, 0);
     }
 
     function updateExpenseTable() {
@@ -244,22 +411,19 @@ permalink: /split-bill/
             let discount = expense.discount;
             let distribution = expense.distribution;
 
-            // Apply discount to the total amount of this expense
             let totalAfterDiscount = amount - discount;
 
             if (!balances[payer]) balances[payer] = 0;
-            balances[payer] += totalAfterDiscount; // Payer pays the discounted amount
+            balances[payer] += totalAfterDiscount;
 
-            // Calculate the total shares for distribution
             let totalShares = distribution.reduce((sum, dist) => sum + dist.share, 0);
 
-            // Distribute the remaining amount (after discount) based on shares
             distribution.forEach(dist => {
                 let personId = dist.personId;
                 let share = (dist.share / totalShares) * totalAfterDiscount;
 
                 if (!balances[personId]) balances[personId] = 0;
-                balances[personId] -= share; // Each person owes their share
+                balances[personId] -= share;
             });
         });
 
